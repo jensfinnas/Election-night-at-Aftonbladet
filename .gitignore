@@ -1,3 +1,9 @@
 .Rproj.user
 .Rhistory
 .RData
+
+*.RData
+
+~*
+
+kolada-sample.xls

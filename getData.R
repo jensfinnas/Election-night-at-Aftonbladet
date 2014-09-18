@@ -15,7 +15,7 @@ require(xlsx)
 require(data.table)
 
 # Open the xlsx file with socio-economic data about the municipalities
-kommunDB <- read.xlsx("kommundata.xlsx", sheetIndex=1)
+kommunDB <- read.xlsx("data/kommundata.xlsx", sheetIndex=1)
 
 # Loopa alla kommuner för att hämta hem valresultat från Aftonbladets API
 # Målet är att omforma JSON-datan från API:et till en tvådimensionell tabell

@@ -3,7 +3,9 @@
 .RData
 
 *.RData
+*.RProj
 
 ~*
+hjälp från Love.R
 
 kolada-sample.xls

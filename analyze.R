@@ -1,3 +1,10 @@
+# ==============================================
+# Election night at Aftonbladet, 
+# by Jens Finnäs, Journalism++ Stockholm
+# ==============================================
+# PART II: UNDERSTAND THE DATA
+# ==============================================
+
 library(ggplot2)
 library(gridExtra)
 library(rjson)
@@ -5,109 +12,25 @@ library(xlsx)
 library(png)
 library(grid)
 
-# Spara alla filterkartor i en lista
-maps <- NULL
-addMap <- function(mapItem) {
-  if (is.null(maps)) {
-    maps <- list(mapItem)
-  }
-  else {
-    maps <- c(maps, list(mapItem))
-  }
-  return(maps)
-}
-writeMapsFile <- function() {
-  write(toJSON(maps), file = "~/Sites/aftonbladet-valkompass-browser/valkarta/data/maps.json")  
-}
-
-# Spara data i variabler med lite smidigare namn
+# Store the municipality data in this data file
 kDat <- kommunDB
-dDat <- dat2010R$distrikt
-# Rätta , > . i kolumnen valdeltagande
+# Make the turnout column numeric
 kDat$valdeltagande <- as.numeric(gsub(",",".", kDat$valdeltagande))
-parties <- c("V", "S", "MP", "C", "FP", "M","KD", "SD")
-partyColors <- c( "#AF0000", "#EE2020", "#83CF39", "#009933", "#6BB7EC", "#1B49DD", "#231977", "#DDDD00")
-# FI:#D9308E
+# Calculate the how many percent of the districts have been counted
+kDat$KLAR_PROCENT <-  kDat$KLARA_VALDISTRIKT / kDat$ALLA_VALDISTRIKT 
+summary(kDat$KLAR_PROCENT)
 
-# I vilka kommuner får partierna mest och minst röster?
-for (party in parties) {
-  print(party)
-  col <- paste(c("PROCENT", party), collapse="_")
-  top10 <- kDat[order(kDat[[col]], decreasing = TRUE),][1:10,]
-  bottom10 <- kDat[order(kDat[[col]], decreasing = FALSE),][1:10,]
-  
-  mapItemTop <- list(
-    "title" = paste("De starkaste kommunerna för ", party, "."),
-    "description" = "",
-    "areas" = top10[['code']],
-    "values" = top10[[col]]
-  )
-  maps <- addMap(mapItemTop)
-  mapItemBottom <- list(
-    "title" = paste("De svagaste kommunerna för ", party),
-    "description" = "",
-    "areas" = bottom10[['code']],
-    "values" = bottom10[[col]]
-  )
-  maps <- addMap(mapItemBottom)
-  
-  print(data.frame(top10[['name']], top10[[col]]))
-  print(data.frame(bottom10[['name']], bottom10[[col]]))
-}
+# Store the district data in this data file
+dDat <- distriktDB
+dDat$name <- dDat$NAMN # Just a hack
+# Turnout => numeric
+dDat$valdeltagande <- as.numeric(gsub(",",".", dDat$valdeltagande))
 
-# Specifika frågor
-mapItem <- list(
-  "title" = "De kommuner där S ökade",
-  "description" = "",
-  "areas" = kDat[kDat$PROCENT_ANDRING_S > 0,]$code,
-  "values" = kDat[kDat$PROCENT_ANDRING_S > 0,]$PROCENT_ANDRING_S  
-  ) 
-maps <- addMap(mapItem)
+# Parties and party colors
+parties <- c("V", "S", "MP", "C", "FP", "M","KD", "SD","FI")
+partyColors <- c( "#AF0000", "#EE2020", "#83CF39", "#009933", "#6BB7EC", "#1B49DD", "#231977", "#DDDD00", "#D9308E")
 
-mapItem <- list(
-  "title" = "De kommuner där MP ökade",
-  "description" = "",
-  "areas" = kDat[kDat$PROCENT_ANDRING_MP > 0,]$code,
-  "values" = kDat[kDat$PROCENT_ANDRING_MP > 0,]$PROCENT_ANDRING_MP  
-)
-maps <- addMap(mapItem)
-
-mapItem <- list(
-  "title" = "De kommuner där MP INTE ökade",
-  "description" = "",
-  "areas" = kDat[kDat$PROCENT_ANDRING_MP < 0,]$code,
-  "values" = kDat[kDat$PROCENT_ANDRING_MP < 0,]$PROCENT_ANDRING_MP  
-)
-maps <- addMap(mapItem)
-
-# FI kom in
-areas <- kDat[kDat$KV_MANDAT_FI > 0,]
-mapItem <- list(
-  "title" = "Kommunerna där FI fick mandat i kommunvalet",
-  "description" = "",
-  "areas" = areas$code,
-  "values" = areas$KV_MANDAT_FI  
-)
-maps <- addMap(mapItem)
-
-areas <- kDat[order(kDat$valdeltagande, decreasing = TRUE),][1:10,]
-mapItem <- list(
-  "title" = "Kommunerna med högst valdeltagande",
-  "description" = "",
-  "areas" = areas$code,
-  "values" = areas$valdeltagande  
-)
-maps <- addMap(mapItem)
-
-# Skapa kartfil
-writeMapsFile()
-
-# ============================================================================ #
-# Om ___ fick bestämma? 
-# Filtrera fram ett antal kommuner (t.ex. de med högst arbetslöshet), räkna ut
-# vilket partier de röstar på i medeltal och rita ut en graf för fördelning.
-# ============================================================================ #
-# Funktion för att lägga till AB-logga
+# Function to add the Aftonbladet logo to a chart
 addLogo <- function(p) {
   # Get the logo
   img <- readPNG("aftonbladet.png")
@@ -142,15 +65,181 @@ addLogo <- function(p) {
   popViewport()
   popViewport()  
 }
+
+# ========================================================== #
+# VISUALIZATION/MAP: 
+# Where to parties get the most/least votes?
+# Where do they grow/shrink?
+# This code will genereate a JSON file that is used to make this map:
+# http://ab-compass-browser.herokuapp.com/valkarta/
+# ========================================================== #
+
+# Funtion that adds map to list of maps
+addMap <- function(mapItem) {
+  if (is.null(maps)) {
+    maps <- list(mapItem)
+  }
+  else {
+    maps <- c(maps, list(mapItem))
+  }
+  return(maps)
+}
+# Write to file
+writeMapsFile <- function() {
+  write(toJSON(maps), file = "~/Sites/aftonbladet-valkompass-browser/valkarta/data/maps.json")  
+}
+# Clear maps list
+maps <- NULL
+
+# Get the top and bottom municipalities for each party
+for (party in parties) {
+  print(party)
+  # Strongest/weakest municipalities (by share of votes)
+  col <- paste(c("PROCENT", party), collapse="_")
+  top10 <- kDat[order(kDat[[col]], decreasing = TRUE),][1:10,]
+  bottom10 <- kDat[order(kDat[[col]], decreasing = FALSE),][1:10,]
+  # Strongest/weakest municipalities (by change)
+  colChange <- paste(c("PROCENT_ANDRING", party), collapse="_")
+  top10change <- kDat[order(kDat[[colChange]], decreasing = TRUE),][1:10,]
+  bottom10change <- kDat[order(kDat[[colChange]], decreasing = FALSE),][1:10,]
+  bottom10change <- bottom10change[bottom10change[[colChange]] < 0 ,] 
+  
+  # Make maps!
+  mapItemTop <- list(
+    "title" = paste("De starkaste kommunerna för ", party),
+    "description" = "",
+    "areas" = top10[['code']],
+    "values" = top10[[col]],
+    "category" = party
+  )
+  maps <- addMap(mapItemTop)
+  mapItemBottom <- list(
+    "title" = paste("De svagaste kommunerna för ", party),
+    "description" = "",
+    "areas" = bottom10[['code']],
+    "values" = bottom10[[col]],
+    "category" = party
+  )
+  maps <- addMap(mapItemBottom)
+
+  mapItemBottom <- list(
+    "title" = paste("Här gick ", party, " fram mest"),
+    "description" = "",
+    "areas" = top10change[['code']],
+    "values" = top10change[[col]],
+    "category" = party
+  )
+  maps <- addMap(mapItemBottom)
+  
+  mapItemBottom <- list(
+    "title" = paste("Här backade ", party, " mest"),
+    "description" = "",
+    "areas" = bottom10change[['code']],
+    "values" = bottom10change[[col]],
+    "category" = party
+  )
+  maps <- addMap(mapItemBottom)
+  
+  # Print a list of the municipalites
+  print(data.frame(top10[['name']], top10[[col]]))
+  print(data.frame(bottom10[['name']], bottom10[[col]]))
+  print(data.frame(top10change[['name']], top10change[[colChange]]))
+  print(data.frame(bottom10change[['name']], bottom10change[[colChange]]))
+}
+
+# We can also make custom maps based on tailored filterings of the data
+
+# All municipalities where SD got seats
+areas <- subset(kDat, KV_MANDAT_SD > 0)
+mapItem <- list(
+  "title" = "De kommuner där SD fick mandat",
+  "description" = "",
+  "areas" = areas$code,
+  "values" = areas$KV_MANDAT_SD,
+  "category" = "SD"
+)
+maps <- addMap(mapItem)
+
+# All mun. where FI got seats
+areas <- subset(kDat, KV_MANDAT_FI > 0)
+mapItem <- list(
+  "title" = "Kommunerna där FI fick mandat i kommunvalet",
+  "description" = "",
+  "areas" = areas$code,
+  "values" = areas$KV_MANDAT_FI,
+  "category" = "FI"
+)
+maps <- addMap(mapItem)
+
+
+# All mun. where Svenskarnas parti got votes
+areas <- subset(kDat, KV_PROCENT_SP > 0)
+subset(dDat, KV_PROCENT_SP > 0)
+mapItem <- list(
+  "title" = "Kommunerna där Svenskarnas Parti fick röster",
+  "description" = "",
+  "areas" = areas$code,
+  "values" = areas$KV_MANDAT_SP,
+  "category" = "other"
+)
+maps <- addMap(mapItem)
+
+# All mun. where S+MP+V has a majority of the votes in the local elections
+areas <- subset(kDat, (KV_PROCENT_S + KV_PROCENT_MP + KV_PROCENT_V)  > 50)
+mapItem <- list(
+  "title" = "Kommunerna där S, MP och V har egen majoritet",
+  "description" = "",
+  "areas" = areas$code,
+  "values" = areas$KV_MANDAT_FI,
+  "category" = "other"
+)
+maps <- addMap(mapItem)
+
+# Municpalites where SD is bigger han MP
+areas <- subset(kDat, (PROCENT_MP < PROCENT_SD))
+nrow(areas)
+mapItem <- list(
+  "title" = "Kommunerna där SD är större än MP",
+  "description" = "",
+  "areas" = areas$code,
+  "values" = areas$KV_MANDAT_FI,
+  "category" = "other"
+)
+maps <- addMap(mapItem)
+
+# Highest turnout
+areas <- kDat[order(kDat$valdeltagande, decreasing = TRUE),][1:10,]
+mapItem <- list(
+  "title" = "Kommunerna med högst valdeltagande",
+  "description" = "",
+  "areas" = areas$code,
+  "values" = areas$valdeltagande,
+  "category" = "other"  
+)
+maps <- addMap(mapItem)
+
+# Write to file
+writeMapsFile()
+
+# ============================================================================ #
+# VISUALIZATION: If ___ got to choose?
+# Subset the 20 municipalities that ranks top/bottom on various factors such as 
+# unemployment. What would the parliament look like if they got to choose?
+# Used to make charts like this: https://twitter.com/jensfinnas/status/511274147003920385
+# ============================================================================ #
+
+# Set: 
+# a) a column to base the ranking on
+# b) the number of municipalities
+# c) the title of the chart
+# d) the labels of the top/bottom charts
+
 ifXGotToChoose <- function(col, n, title, topBottomLabels) {
-  col <- 'reportedCrime'
-  n <- 20
-  # Sortera vår dataframe och filtrera de n första raderna
+  # Sort the dataset based on the chosen column
   subsetTop <- kDat[order(kDat[[col]], decreasing = TRUE),][1:n,]
   subsetBottom  <- kDat[order(kDat[[col]], decreasing = FALSE),][1:n,]
   print(subsetTop)
-  # Loopa partierna och kolla hur många procents understöd de i snitt har i 
-  # de valda kommunerna.
+  # Count results by party in the subseted municipalities
   votesTop <- c()
   votesBottom <- c()
   for (party in parties) {
@@ -161,54 +250,98 @@ ifXGotToChoose <- function(col, n, title, topBottomLabels) {
     votesBottom <- union(votesBottom, percentBottom) 
   }
   votes <- union(votesTop, votesBottom)
-  # Skapa en data frame som blir underlag för graf
+  # Create a data frame that is used to build the chart
   cat <- c(rep(topBottomLabels[1], length(parties)), rep(topBottomLabels[2], length(parties)))
   df <- data.frame(party=factor(c(parties,parties), levels = parties , ordered = TRUE),votes=votes, cat=cat)    
   
-  # Bygg grafen
+  # Make the chart
   p <- ggplot(data=df, aes(x=party, y=votes, fill=party)) + 
     geom_bar(stat="identity") + 
-    scale_fill_manual(values = partyColors) + # Färgsätt med partifärger
-    facet_grid(. ~ cat) +
+    scale_fill_manual(values = partyColors) + # Color by party
+    facet_grid(. ~ cat) + # Split into two charts horizontally
     theme(
-      legend.position = "none", # Göm legend
-      plot.title = element_text(face="bold", size=16,vjust = 2), # Stil för rubbe
-      strip.text.x = element_text(size = 14) 
+      legend.position = "none", # Hide legend
+      plot.title = element_text(face="bold", size=20,vjust = 2), # Style title
+      strip.text.x = element_text(size = 16) 
     ) + 
-    geom_text(aes(label=sprintf("%1.1f%%",votes)), position=position_dodge(width=0.9), vjust=-0.5, size = 4) + # Etiketter för staplarna
-    ggtitle(title) + # Sätt rubrik för hela grafen
-    xlab("") + # Ingen rubrik för x-axeln
-    ylab("Procent")  # Rubrik för y-axeln
+    geom_text(aes(label=sprintf("%1.1f%%",votes)), position=position_dodge(width=0.9), vjust=-0.5, size = 4) + # Bar labels
+    ggtitle(title) + # Chart title
+    xlab("") + # X axis title
+    ylab("Procent")  # Y axis title
     
   
-  # Printa vilka kommuner det handlar om
+  # Print a list of the selected municipalites
   print(topBottomLabels[1])
   print(subsetTop$name)
   print(topBottomLabels[2])
   print(subsetBottom$name)
-  #g <- arrangeGrob(p, sub = textGrob(paste(subset$name, collapse = ", "), x = 0, hjust = -0.1, vjust=0.1, gp = gpar(fontsize = 10)))
-  # Lägg till logo
-#  addLogo(p)
+
+  # Add logo
+  addLogo(p)
   return(p)
 } 
+# Generate charts!
 ifXGotToChoose('foreignBorn', 20, "Så här röstar kommunerna \n där andelen utlandsfödda är...", c("...högst.", "...lägst."))
 ifXGotToChoose('medianIncome', 20, "Så här röstar kommunerna \n där medianinkomsten är...", c("...högst.", "...lägst."))
-ifXGotToChoose('unemploymentChange', 20, "Så här röstar kommunerna \n där arbetslösheten de senaste åren...", c("...växt kraftigast.", "...minskat mest"))
-
-
+ifXGotToChoose('unemploymentChange', 20, "Så här röstar kommunerna \n där arbetslösheten de senaste åren...", c("...växt kraftigast.", "...minskat mest."))
+ifXGotToChoose('refugees', 20, "Så här röstar kommunerna \n där flyktingmottagningen är...", c("...störst.", "...minst."))
+ifXGotToChoose('hasEducation', 20, "Så här röstar kommunerna \n där utbildningsnivån är...", c("...högst.", "...lägst."))
+ifXGotToChoose('unemployment2013', 20, "Så här röstar kommunerna \n där arbetslösheten är...", c("...högst.", "...lägst."))
+ifXGotToChoose('populationShare65plus', 20, "Så här röstar kommunerna \n där andelen 65+ är...", c("...störst.", "...minst."))
+ifXGotToChoose('tractors', 20, "Så här röstar kommunerna \n där antalet traktorer per invånare är...", c("...störst.", "...minst"))
+ifXGotToChoose('snowmobiles', 20, "Så här röstar kommunerna \n där antalet snöskotrar per invånare är...", c("...störst.", "...minst"))
 
 
 # ============================================================================ #
-# Korrelationsjakt: Skapa en korrelationsmatris för att se om det finns samband
-# som till exempel kan förklara ett partis upp- eller nedgång. 
+# VISUALIZATION: This is how ___ voted
+# Similar to the previous chart, but with only on subset. Eg how did the three
+# largest cities vote?
 # ============================================================================ #
-# Skapa en lista över de kolumner som vi vill korrelera mot varandra
+drawSupportChartForSelection <- function(selectedKommuner, title) {
+  votes <- c()
+  # Get average number of votes in the selected municipaliteis
+  for (party in parties) {
+    col <- paste(c("PROCENT", party), collapse="_")
+    percent <- mean(selectedKommuner[[col]])
+    votes <- union(votes, percent) 
+  }
+  # Transform data
+  df <- data.frame(party=factor(parties, levels = parties , ordered = TRUE) ,votes=votes)
+  # Draw the chart
+  p <- ggplot(data=df, aes(x=party, y=votes, fill=party)) + 
+    geom_bar(stat="identity") + 
+    scale_fill_manual(values = partyColors) + # Color by party
+    theme(
+      legend.position = "none", # Hide legend
+      plot.title = element_text(face="bold", size=16,vjust = 2), # Style title
+      strip.text.x = element_text(size = 14) 
+    ) + 
+    geom_text(aes(label=sprintf("%1.1f%%",votes)), position=position_dodge(width=0.9), vjust=-0.5, size = 4) + # Bar labels
+    ggtitle(title) + # Chart titles
+    xlab("") + # X axis title
+    ylab("Procent")  # Y axis title
+  
+  # Add AB logo
+  addLogo(p)
+}
+
+# How did the biggest cities vote?
+# First subset some rows
+selectedKommuner <- subset(kDat, municipalityType == "Storstäder")
+# ...then draw the chart
+drawSupportChartForSelection(selectedKommuner, "Storstäderna")
+
+# ============================================================================ #
+# ANALYSIS/VISUALIZATION: Correlation hunt
+# Look for correaltions in the dataset. Are there socio-economic factors that
+# correlates with the election results?
+# ============================================================================ #
+# Get a list of all columns that we want to analyze (primarily the the numeric ones)
 correlationCols <- c()
-# Spara alla kategorikolumner i en 
 categoryCols <- c()
 for (col in names(kDat)) {
   value <- kDat[[col]]
-  # Ta endast med kolumner med numeriska värden, xxkludera mandat och antal röster
+  # Exclude non-numeric cols, mandates and number of votes
   if (is.numeric(value) && !grepl("MANDAT", col) && !grepl("ROSTER", col)) {
     correlationCols <- union(correlationCols, col)
   }
@@ -216,115 +349,191 @@ for (col in names(kDat)) {
     categoryCols <- union(categoryCols, col) 
   }
 }
-# Filtrera de utvalda kolumnerna
+# Selected the right columns
 correlationData <- kDat[,correlationCols]
-# Skapa en korrelationsmatris
+# Create a correlation matrix
 correlationTable <- cor(correlationData)
-# Skriv matrisen till en Excel-fil
+# Write the the correlation matrix to an Excel file for further analysis
 write.xlsx(x = correlationTable, file = "correlation-table.xlsx", sheetName = "Corrlations", row.names = TRUE)  
 
 
-# Funktion för att rita scatterplots
-drawScatterPlot <- function(x, y, xLabel, yLabel, title, highlight) {
-  # Filtrera fram de kommuner som ska få etiketter
-  correlationData$name <- apply(kDat, 1, FUN = function(d) { if (d[['name']] %in% highlight) d[['name']] else "" })
-  correlationData$highlighted <- apply(kDat, 1, FUN = function(d) { if (d[['name']] %in% highlight) "0" else "1"})
+# Visualize interesting correlations in a scatterplot
+# "highlight" is a vector of municipality names that are highlighted with labels
+drawScatterPlot <- function(dat,x, y, xLabel, yLabel, title, highlight) {
+  # Filter the municipalities that are to be highlighted
+  correlationData$name <- apply(dat, 1, FUN = function(d) { if (d[['name']] %in% highlight) d[['name']] else "" })
+  correlationData$highlighted <- apply(dat, 1, FUN = function(d) { if (d[['name']] %in% highlight) "0" else "1"})
   
-  # Skapa grafen
+  # Create chart
   p <- ggplot(correlationData, aes_string(x=x, y=y, color="highlighted")) +
-    geom_point(shape=19, alpha=1/2) + # Stil för punkterna
-    geom_text(aes(label=name), size=4, vjust=-0.7) + # Stil för punkternas etiketter
-    scale_color_manual(values = c("black","bisque4")) + # Färger för punkterna
+    geom_point(shape=19, alpha=1/2) + # Dot styling
+    geom_text(aes(label=name), size=4, vjust=-0.7) + # Label styles
+    scale_color_manual(values = c("black","bisque4")) + # Dot colors
     theme(
-      legend.position = "none", # Göm legenden
-      axis.title.x = element_text(color="black", size=14), # Stil för x-axelns rubbe
-      axis.title.y = element_text(color="black", size=14), # Stil för y-axelns rubbe
-      plot.title = element_text(face="bold", size=16,vjust = 2) # Stil för huvudrubbe
+      legend.position = "none", # Hide legend
+      axis.title.x = element_text(color="black", size=14), # X axis title style
+      axis.title.y = element_text(color="black", size=14), # Y axis title style
+      plot.title = element_text(face="bold", size=20,vjust = 2) # Chart title style
     ) +
-    ggtitle(title) + # Rubrik för hela grafen
-    xlab(xLabel) + # Rubrik för x-axeln
-    ylab(yLabel) # Rubrik för y-axeln 
+    ggtitle(title) + # Chart title
+    xlab(xLabel) + # X axis title
+    ylab(yLabel) # Y axis title 
   
-  # Lägg till logga
+  # Add logo
   addLogo(p)
 }
 
-# Exempelanvändning på scatterplot-ritaren
-highlight <- kDat[kDat$unemployment2013 > 13,]$name
-x <- "urbanDegree"
-y <- "PROCENT_C"
-xLabel <- "Kommunens tätortsgrad"
-yLabel <- "Andel som röstar C"
-title <- "Många röstar C på landet"
-drawScatterPlot(x,y,xLabel,yLabel,title, highlight)
+# SD growth vs education level
+highlight <- c("Filipstad", "Lund", "Danderyd", "Munkfors", "Simrishamn", "Vellinge", "Lomma")
+drawScatterPlot(kDat,"hasEducation","PROCENT_ANDRING_SD","Andel med utbildning","Ökning för SD (%)","SD växer där utbildningsnivån är låg", highlight)
+
+# SD growth was population change
+highlight <- c("Sundbyberg", "Sigtuna", "Örnsköldsvik", "Älvkarleby", "Färgelanda", "Strömstad")
+drawScatterPlot(kDat,"populationChange","PROCENT_ANDRING_SD","Befolkningsförändring senaste fem åren (%)","Ökning för SD (%)","SD växer mest i kommuner som krymper", highlight)
+nrow(kDat)
+
+# FI result vs education level
+highlight <- c("Stockholm", "Lund", "Solna", "Göteborg", "Malmö", "Umeå", "Uppsala")
+drawScatterPlot(kDat,"hasEducation","PROCENT_ANDRING_FI","Andel med eftergymnasial utbildning (%)","Ökning för FI (%)","FI växer mest i kommuner med hög utbildningsnivå", highlight)
 
 
 # ============================================================================ #
-# Vad utmärker de kommuner där XXXXX?
+# ANALYSIS: Party results in different municipality types
+# What is the average support of a party in different kinds of municpalities?
 # ============================================================================ #
+
+# SD change vs municipality type
+SDvsMunType <- aggregate(kDat$PROCENT_ANDRING_SD , by=list(kDat$municipalityType), FUN=mean, na.rm=TRUE)
+# SD change vs current local coverning
+SDvsGoverning <- aggregate(kDat$PROCENT_ANDRING_SD , by=list(kDat$governing), FUN=mean, na.rm=TRUE)
+write.xlsx(x = SDvsMunType, file = "output/SDs ökning vs SKL-typ.xlsx", sheetName = "data", row.names = TRUE)
+colnames(SDvsMunType) <- c("cat", "percent")
+colnames(SDvsGoverning) <- c("cat", "percent")
+
+# FI vs current local coverning
+FIvsMunType <- aggregate(kDat$PROCENT_FI , by=list(kDat$municipalityType), FUN=mean, na.rm=TRUE)
+colnames(SDvsGoverning) <- c("cat", "percent")
+write.xlsx(x = FIvsMunType, file = "output/FI-stöd vs SKL-typ.xlsx", sheetName = "data", row.names = TRUE)
+
+
+
+# ============================================================================ #
+# ANALYSIS: What is typical of the municipalities where party X grows?
+# Make a subset to municipalities and see how they differ from the national average
+# on various socio-economic measurments.
+# ============================================================================ #
+
+# Get numeric cols
 metaCols <- c()
 for (col in names(kDat)) {
   value <- kDat[[col]]
-  # Ta endast med kolumner med numeriska värden, xxkludera mandat och antal röster
   if (is.numeric(value) && !grepl("MANDAT", col) && !grepl("ROSTER", col) && !grepl("PROCENT", col) && !grepl("VALDISTRIKT", col)) {
     metaCols <- c(metaCols, col)
   }
 }
-subset <- kDat[kDat$PROCENT_SD > 10,]
+
+# Subset the municipalities where SD support > 20 %
+selectedKommuner <- subset(kDat, PROCENT_SD > 20.0)
+nrow(selectedKommuner)
+
+# Subset municpalites where Moderaterna is the largest party
+selectedKommuner <- subset(kDat, KV_largest_party == "M")
+
+# Compare the means of the selected columns with the national avg.
 df <- data.frame(column=metaCols)
 df$nationalMean <- apply(df, 1, function(d) mean(kDat[[d[['column']]]]))
-df$subsetMean <- apply(df, 1, function(d) mean(subset[[d[['column']]]]))
+df$subsetMean <- apply(df, 1, function(d) mean(selectedKommuner[[d[['column']]]]))
 df$diff <- (df$subsetMean / df$nationalMean - 1) * 100
-df <- within(df, 
-       diff <- factor(diff, 
-                          levels=names(sort(table(diff), 
-                                            decreasing=TRUE))))
 
-ggplot(data=df, aes(x=column, y=diff)) + 
+# Make a chart (for our own analysis only this time)
+ggplot(data=df, aes(x=column, y=diffMedian)) + 
   geom_bar(stat="identity") + 
   coord_flip() +
   theme(
-    legend.position = "none", # Göm legend
+    legend.position = "none", 
     plot.title = element_text(face="bold", size=16,vjust = 2), # Stil för rubbe
     strip.text.x = element_text(size = 14) 
   ) + 
   geom_text(aes(label=sprintf("%1.1f%%",diff)), position=position_dodge(width=0.9), vjust=0.5, size = 4) + # Etiketter för staplarna
-  ggtitle("") + # Sätt rubrik för hela grafen
-  xlab("") + # Ingen rubrik för x-axeln
-  ylab("Procent")  # Rubrik för y-axeln
+  ggtitle("") +
+  xlab("") + 
+  ylab("Procent") 
+
+# Function that draws a basic chart that compares the subseted municpalities to the country avg on a 
+# specific measurment.
+drawCountryComparisonChart <- function(chartDf, title, ylab) {
+  chartDf <- data.frame(cat = c("SD:s toppkommuner","Hela landet"), value=c(chartDf$subsetMean,chartDf$nationalMean))
+  
+  p <- ggplot(data=chartDf, aes(x=cat, y=value, fill=factor(cat)))+
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = c("#666666", "#EDF25E")) +
+    theme(
+      legend.position = "none", # Göm legend
+      plot.title = element_text(face="bold", size=20,vjust = 2), # Stil för rubbe
+      strip.text.x = element_text(size = 14),
+      axis.title.y = element_text(size = 14),
+      axis.text.x = element_text(size = 14)
+    ) + 
+    ggtitle(title) + # Sätt rubrik för hela grafen 
+    xlab("") +
+    ylab(ylab)  # Rubrik för y-axeln
+  
+  addLogo(p)
+}
+# Compare number of refugees in SD municpalites and national avg
+chartDfRefugees <- df[df$column=="refugees",] 
+drawCountryComparisonChart(chartDfRefugees, "SD:s toppkommuner tar emot färre flyktingar", "Mottagna flyktingar per 10 000 invånare")
+# Compare unemployment in SD municpalites and national avg
+chartDfUnemployment <- df[df$column=="unemployment2013",] 
+drawCountryComparisonChart(chartDfUnemployment, "SD:s toppkommuner har något högre arbetslöshet", "Mottagna flyktingar per 10 000 invånare")
+
+         
+# ============================================================================ #
+# ANALYSIS: How much do the support for a party differ in the local and national
+# elections in the same municipality.
+# ============================================================================ #
+kDat$SD_KV_R_DIFF <- kDat$KV_PROCENT_SD - kDat$PROCENT_SD
+nrow(kDat[kDat$SD_KV_R_DIFF > 0, ])
+nrow(kDat[kDat$SD_KV_R_DIFF < 0, ])
+
 
 # ============================================================================ #
-#    VALDISTRIKT
+# ANALYSIS: In what districts do the parties win/loose the most. What are
+# their strongholds?
 # ============================================================================ #
-# I vilka valdistrikt ökar partierna mest?
-# Skapa en ny workbook för Excel
+# The results will be exported to a Excel file
 wb <- createWorkbook()
-# Loopa alla partier 
+# Iterate parties
 for (party in parties) {
   print(party)
   col <- paste(c("PROCENT_ANDRING", party), collapse="_")
-  # Sortera efter förändring och hämta de n största distrikten
+  # Get their top districts (by growth)
   top <- dDat[order(dDat[[col]], decreasing = TRUE),][1:20,]
   sheet <- createSheet(wb, sheetName=party)
   
-  # Skapa en data frame som underlag för det vi till slut skriver till Excel-filen
+  # Transform data to a pretty data frame
   dfTop <- data.frame(
-    Distrikt = top[['NAMN']],
-    Kommun = top[['NAMN']], 
+    'Distrikt' = top[['NAMN']],
+    'Kommun' = top[['NAMN']], 
     'Förändring' = top[[col]])
-
+  
+  # Add sheet
   addDataFrame(dfTop, sheet)
 }
-# Spara Excel-filen
+# Save Excel file
 saveWorkbook(wb, "output/partiernas toppdistrikt enligt tillväxt.xlsx")
 
-# Korrelationer
+# ============================================================================ #
+# ANALYSIS: Correlations
+# Same as for the municipalities above
+# ============================================================================ #
+
+# Get columns to correlate
 correlationCols <- c()
-# Spara alla kategorikolumner i en 
 categoryCols <- c()
 for (col in names(kDat)) {
   value <- dDat[[col]]
-  # Ta endast med kolumner med numeriska värden, xxkludera mandat och antal röster
+  # Get numeric cols
   if (is.numeric(value) && !grepl("MANDAT", col) && !grepl("ROSTER", col)) {
     correlationCols <- union(correlationCols, col)
   }
@@ -332,15 +541,16 @@ for (col in names(kDat)) {
     categoryCols <- union(categoryCols, col) 
   }
 }
-# Filtrera de utvalda kolumnerna
+# Filter the right cols
 correlationData <- dDat[,correlationCols]
-# Skapa en korrelationsmatris
+# Create a correlation matrix
 correlationTable <- cor(correlationData)
-# Skriv matrisen till en Excel-fil
+
+# Write to Excel file to for further analysis
 write.xlsx(x = correlationTable, file = "correlation-table-distrikt.xlsx", sheetName = "Corrlations", row.names = TRUE)  
 
-drawScatterPlot()
+# Draw a scatterplot: compare change for M with change for SD
+drawScatterPlot(dDat,"PROCENT_ANDRING_M","PROCENT_ANDRING_SD","Förändring för M (%)","Ökning för SD (%)","SD växer i distrikt där M backar", highlight)
 
-ggplot(correlationData, aes(x=PROCENT_ANDRING_SD, y=PROCENT_ANDRING_M)) +
-  geom_point(shape=19, alpha=1/2)
+
 

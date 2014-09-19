@@ -17,11 +17,6 @@ require(data.table)
 # Open the xlsx file with socio-economic data about the municipalities
 kommunDB <- read.xlsx("data/kommundata.xlsx", sheetIndex=1)
 
-# Loopa alla kommuner för att hämta hem valresultat från Aftonbladets API
-# Målet är att omforma JSON-datan från API:et till en tvådimensionell tabell
-# som vi kan slå ihop med den socioekonomiska datan (arbetslöshet etc) från Excel.
-
-# Spara kommunresultaten i en egen data frame
 # This function fetches the results of a given election at municipality and district level from 
 # the result API of Aftonbladet.
 # electionID follows this pattern: "val{YEAR}{ELECTION}" where ELECTION is R for "riksdagsval" (national),
